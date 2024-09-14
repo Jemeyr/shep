@@ -100,17 +100,16 @@ function createNote(phase, oscAmt, context){
   return note
 }
 
-jQuery("document").ready(function($) {
+var mute = false;
+
+function toggleMute(){
+  mute = !mute;
+}
 
 
-  $('.btn-run').click(function() {
-
-    /*Sets up buttons*/
-    $('.button').addClass('btn-nope'); //Makes sure 'run' can't be clicked again
-    $('.btn-mute').addClass('btn-mute-visible'); //Show the mute button
-    $('.btn-mute').click(function() {
-      $(this).toggleClass('disable');
-    });
+function start(){
+    document.getElementById('startButton').remove()
+    document.getElementById('muteButton').className='btn-mute-visible'
 
     //Sets up the initial audio context
     context = new AudioContext();
@@ -156,7 +155,7 @@ jQuery("document").ready(function($) {
     var scale = [2.0,2.0,1.0,2.0,2.0,2.0,1.0]
 
     setInterval(function() {
-      if ($('.btn-mute').hasClass('disable')) {
+      if (mute) {
         master.gain.value = 0;
       } else {
         master.gain.value = gainVal;
@@ -176,7 +175,7 @@ jQuery("document").ready(function($) {
     console.log(context);
 
     //Setting up analyser
-    analyser.fftSize = 1024;//4096; meh
+    analyser.fftSize = 1024;//meh
     var bufferLength = analyser.frequencyBinCount;
     var dataArray = new Uint8Array(bufferLength);
     canvasCtx.clearRect(0, 0, WIDTH, HEIGHT);
@@ -208,6 +207,4 @@ jQuery("document").ready(function($) {
     };
     draw();
 
-  }); //End click button
-
-}); //End jQuery
+  }

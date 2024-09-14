@@ -37,10 +37,6 @@ button {
   display: block;
 }
 
-.disable {
-  background-color: green;
-  color: white;
-}
 
 .canvas {
   margin:0 auto;
