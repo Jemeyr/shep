@@ -37,8 +37,13 @@ button {
   display: block;
 }
 
+.grid {
+  margin:0 auto;
+  display:block;
+  background-color:rgb(0,30,30);
+}
 
-.canvas {
+.visualizer {
   margin:0 auto;
   display:block;
   background-color:rgb(30,0,30);

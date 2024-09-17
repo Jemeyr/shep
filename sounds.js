@@ -1,4 +1,49 @@
 
+//Visualizer stuff
+function setUpVisualizer(analyser){
+
+    //Setting up canvas
+    var visualizer = document.querySelector('.visualizer');
+    var WIDTH = visualizer.width;
+    var HEIGHT = visualizer.height;
+    var visualizerContext = visualizer.getContext('2d');
+    console.log(context);
+
+    //Setting up analyser
+    analyser.fftSize = 1024;//meh
+    var bufferLength = analyser.frequencyBinCount;
+    var dataArray = new Uint8Array(bufferLength);
+    visualizerContext.clearRect(0, 0, WIDTH, HEIGHT);
+
+
+    //TODO the 0.9 and 1.2 are fudge factors taht seem to be needed but shouldn't be
+    //scale the width and don't render empty triangles for frequencies we filter out 
+    var analyserFrequencyScalar = (48000 / (2 * highestFreq));
+    var barWidth = (WIDTH / bufferLength) * analyserFrequencyScalar * 0.9;
+    var analyserLoopAmount = (bufferLength / analyserFrequencyScalar) * 1.2;
+    var barMaxHeight = 260; //pixels
+    function draw() {
+      drawVisual = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(dataArray);
+
+      visualizerContext.fillStyle = 'rgb(30,0,30)';
+      // visualizerContext.setTransform(1, 0, 0, 1, 0, 0);
+
+      visualizerContext.fillRect(0, 0, WIDTH, HEIGHT);
+
+
+      for (i = 0; i < analyserLoopAmount; i++) {
+        barHeight = dataArray[i] * (barMaxHeight / 255);
+        visualizerContext.fillStyle = `rgb(${120-barHeight/2},${barHeight},0)`;
+
+        visualizerContext.fillRect(barWidth * i, HEIGHT - barHeight, barWidth, barHeight);
+      }
+
+    };
+    draw();
+}
+
+
 
 //TODO ok so this is 6 powers of 2 apart, as in 7040/110 = 64 = 2^6
 //TODO therefore 1.0 in "phase" is functionally "6 octaves"
@@ -107,6 +152,66 @@ function toggleMute(){
 }
 
 
+//static things for the grid
+var grid;
+var gridX;
+var gridY;
+var gridBoxX, gridBoxY;
+var gridSize = 5; //The NxN grid to make
+var squares = [...new Array(gridSize)].map((a,i) => [...new Array(gridSize)].map((a,i) => {return {selected: false};}));
+var gridContext;
+var maxSelected = 5;
+var currentlySelected = 0;
+
+
+//draw grid
+function drawGrid(){
+  gridContext.fillStyle = `rgb(0,0,0)`;
+
+  gridContext.fillRect(0,0,gridX, gridY);
+
+  squares.forEach((row, i) => {
+    row.forEach((square, j) => {
+      gridContext.fillStyle = (square.selected) ? 'rgb(0,120,120)' : 'rgb(0,30,30)';
+      gridContext.fillRect(gridBoxX*j + 1, gridBoxY*i +1, gridBoxX -2, gridBoxY-2);
+    });
+  });
+
+}
+
+
+
+function handleClick(event){
+  console.log(event)
+  bounds = grid.getBoundingClientRect();
+
+  var x = Math.floor((event['clientX'] - bounds.left) / gridBoxX);
+  var y = Math.floor((event['clientY'] - bounds.top) / gridBoxY);
+    console.log(`toggled ${x}, ${y}`)
+
+  if(currentlySelected < maxSelected || squares[y][x].selected){
+    currentlySelected += squares[y][x].selected ? -1 : 1;
+    squares[y][x].selected = !squares[y][x].selected;
+  }
+
+  drawGrid()
+}
+
+
+
+//Page load, fetch things like canvas context
+function load(){
+    grid = document.querySelector('.grid');
+    console.log("grid")
+    gridX = grid.width;
+    gridY = grid.height;
+    console.log('setting grid box size')
+    gridBoxX = gridX/gridSize;
+    gridBoxY = gridY/gridSize;
+    gridContext = grid.getContext('2d');
+    drawGrid()
+}
+
 function start(){
     document.getElementById('startButton').remove()
     document.getElementById('muteButton').className='btn-mute-visible'
@@ -165,46 +270,5 @@ function start(){
       scaleIndex = (scaleIndex === (scale.length - 1)) ? 0 : scaleIndex + 1;
     }, intervalTime);
 
-    /*Analyser*/
-
-    //Setting up canvas
-    var canvas = document.querySelector('.canvas');
-    var WIDTH = canvas.width;
-    var HEIGHT = canvas.height;
-    var canvasCtx = canvas.getContext('2d');
-    console.log(context);
-
-    //Setting up analyser
-    analyser.fftSize = 1024;//meh
-    var bufferLength = analyser.frequencyBinCount;
-    var dataArray = new Uint8Array(bufferLength);
-    canvasCtx.clearRect(0, 0, WIDTH, HEIGHT);
-
-
-    //TODO the 0.9 and 1.2 are fudge factors taht seem to be needed but shouldn't be
-    //scale the width and don't render empty triangles for frequencies we filter out 
-    var analyserFrequencyScalar = (48000 / (2 * highestFreq));
-    var barWidth = (WIDTH / bufferLength) * analyserFrequencyScalar * 0.9;
-    var analyserLoopAmount = (bufferLength / analyserFrequencyScalar) * 1.2;
-    var barMaxHeight = 260; //pixels
-    function draw() {
-      drawVisual = requestAnimationFrame(draw);
-      analyser.getByteFrequencyData(dataArray);
-
-      canvasCtx.fillStyle = 'rgb(30,0,30)';
-      // canvasCtx.setTransform(1, 0, 0, 1, 0, 0);
-
-      canvasCtx.fillRect(0, 0, WIDTH, HEIGHT);
-
-
-      for (i = 0; i < analyserLoopAmount; i++) {
-        barHeight = dataArray[i] * (barMaxHeight / 255);
-        canvasCtx.fillStyle = `rgb(${120-barHeight/2},${barHeight},0)`;
-
-        canvasCtx.fillRect(barWidth * i, HEIGHT - barHeight, barWidth, barHeight);
-      }
-
-    };
-    draw();
-
+    setUpVisualizer(analyser)
   }
