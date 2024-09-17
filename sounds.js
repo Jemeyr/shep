@@ -16,7 +16,7 @@ function setUpVisualizer(analyser){
 
 
     //TODO the 0.9 and 1.2 are fudge factors taht seem to be needed but shouldn't be
-    //scale the width and don't render empty triangles for frequencies we filter out 
+    //scale the width and don't render empty triangles for frequencies we filter out
     var analyserFrequencyScalar = (48000 / (2 * highestFreq));
     var barWidth = (WIDTH / bufferLength) * analyserFrequencyScalar * 0.9;
     var analyserLoopAmount = (bufferLength / analyserFrequencyScalar) * 1.2;
@@ -47,15 +47,20 @@ function setUpVisualizer(analyser){
 //TODO ok so this is 6 powers of 2 apart, as in 7040/110 = 64 = 2^6
 //TODO therefore 1.0 in "phase" is functionally "6 octaves"
 var lowestFreq = 110;//A2
-var highestFreq = 7040;//A8
-var octaveSpan = 6;
+var highestFreq = 3520;//A7
+var octaveSpan = 5; //wait this was 6 = A2 -> A8 now its not a valid multiple :/
+//This appears to be needed because using Number.MIN_VALUE drops below some audiocontext epsilon for exponential scalars or something
+const EPSILON = 0.00000000001;
 
 //calculated shit
 //Ok basically we need to find out what frequency is logarithmically 1 Nth (For n oscillators) of the range from low to high
 var logRange = Math.log(highestFreq) / Math.log(lowestFreq)
 
+//seconds to change volume, sure
+var volumeAttack = 0.1;
 
-//TODO check these are not borked and reenable
+
+//TODO check these are not borked and reenable eventually
 function getFadeInCutoff(oscAmt){
   return highestFreq;//lowestFreq + Math.pow(lowestFreq, logRange/oscAmt)
 }
@@ -66,9 +71,9 @@ function getFadeOutCutoff(oscAmt){
 
 
 //TODO TODO this uses a bunch of jankily far away state. Also the math seems wrong
-//TODO this maps a "phase" to a frequency. Phases should basically map a 0-1 range to some number of octaves (2-4?) with a shepard tone wrapping such that 0 = 1 
+//TODO this maps a "phase" to a frequency. Phases should basically map a 0-1 range to some number of octaves (2-4?) with a shepard tone wrapping such that 0 = 1
 function toFrequency(phase){
-  //Temp hax 4x here puts a single sin wave per note in usable frequencies  
+  //Ok basically an octave is 2x frequency, so if we declare our ranges on frequencies as a range of 6, then that is the valid exponent our phase maps to?
   return lowestFreq * Math.pow(2, octaveSpan * phase);
 }
 
@@ -80,6 +85,7 @@ function createNote(phase, oscAmt, context){
   note.oscs = []
   //note.oscPhases = []
   note.gains = []
+  note.gainAmounts = []
   note.volume = context.createGain()
 
   //Start muted
@@ -90,7 +96,9 @@ function createNote(phase, oscAmt, context){
     osc.type = 'sine'
     
     var gain = context.createGain()
-    gain.gain.value = 1.0
+    var gainAmount = Math.pow((1.0 - (i/(oscAmt + 1))),8);
+
+    gain.gain.value = gainAmount
 
     //each osc in a note has its own gain to fade in/out appropriately, and then a note overall volume
     osc.connect(gain)
@@ -99,39 +107,43 @@ function createNote(phase, oscAmt, context){
     //These notes aren't sorted out yet, we define a function to manage them and then call it later
     note.oscs[i] = osc
     note.gains[i] = gain
+    //Kinda janky but gainAmount is for the oscillator, so if we have 3 oscillators for a note, the higher ones will be less loud?
+    note.gainAmounts[i] = gainAmount
   }
 
   note.setVolume = function(newVolume){    
-    this.volume.gain.value = newVolume;
+    this.volume.gain.exponentialRampToValueAtTime(newVolume < EPSILON ? EPSILON : newVolume, audioContext.currentTime + volumeAttack);
   }
 
   note.setPhase = function(newPhase){
-    console.log(`setting phase to ${phase}`)
     this.phase = newPhase
     var oscAmt= note.oscs.length
 
-    var fadeInCutoff = getFadeInCutoff(oscAmt); 
-    var fadeOutCutoff = getFadeOutCutoff(oscAmt); 
-
     for (i = 0; i< oscAmt; i++){
+      //TODO these offsets are janky somehow? In retrospect the gain for each one is the same unless it is being dampened to fit in range
+
+
       var frequency = toFrequency((newPhase + ((i === 0 ? 0 : Math.log(i+1)) / Math.log(2))/octaveSpan) %1.0 );
       this.oscs[i].frequency.value = frequency; //Apply new frequency to oscillator.
 
+      //Rejanked, clip to our frequency range, in the first/last octave of the range scale linearly for now
+      //Basically a bad bandpass filter?
 
-      //Kinda janky. Keep in mind each note has its own master, which scales overall note volume
-      if (frequency < lowestFreq) {
-        this.gains[i].gain.value = 0;
-      } else if(frequency < fadeInCutoff){
-        //at lowest it should be 0, at cutoff it should be 1
-        this.gains[i].gain.value = ((frequency-lowestFreq) / (fadeInCutoff - lowestFreq));
-      } else if(frequency < fadeOutCutoff){
-        this.gains[i].gain.value = 1;  
+      //Default to no volume
+      var gainScalar = 0.0;
+      if(frequency < lowestFreq*2){
+        gainScalar = ((frequency-lowestFreq) / lowestFreq);
+        
+      } else if(frequency < highestFreq/2){
+        gainScalar = 1.0;
+      
       } else if(frequency < highestFreq) {
-        //at cutoff it's 1, at highest it's 0
-        this.gains[i].gain.value = ((highestFreq - frequency) / (highestFreq - fadeOutCutoff));
-      } else if(frequency >= highestFreq) {
-        this.gains[i].gain.value = 0;
-      }
+        gainScalar = (highestFreq - frequency)/(highestFreq/2);
+      } 
+
+      var gain = gainScalar * this.gainAmounts[i]
+      this.gains[i].gain.exponentialRampToValueAtTime(gain < EPSILON  ? EPSILON : gain,volumeAttack);
+      
     }
   }
 
@@ -152,10 +164,10 @@ var grid;
 var gridX;
 var gridY;
 var gridBoxX, gridBoxY;
-var gridSize = 5; //The NxN grid to make
+var gridSize = 10; //The NxN grid to make
 var squares = [...new Array(gridSize)].map((a,i) => [...new Array(gridSize)].map((a,i) => {return {selected: false};}));
 var gridContext;
-var maxNotes = 5;
+var maxNotes = 8;
 //Hold list of coords instead of counts to scale up to infinite squares in future
 var currentlySelected = [];
 
@@ -177,15 +189,15 @@ function updateNotes(){
   currentlySelected.forEach(function(box, i) {
     var note = notes[i]
     note.setVolume(1);
-    //accordion mode?
-    note.setPhase(((box.y*4 + 7*box.x)/(octaveSpan*12))%1.0)
+    //This is functionally the approxiamte "major 3rd" and "perfect fifth" in 19edo
+    note.setPhase(((box.y*6 + box.x*11)/(octaveSpan*19))%1.0)
   })
   for(var i = currentlySelected.length; i<maxNotes; i++){
     notes[i].setVolume(0)
   }
 
-  //1/(octaveSpan*12) -> semitone
-  //TODO I guess figure out how integer ratios fit into the 'phase' scheme...
+  // 1/(octaveSpan*12) -> semitone in 12 tet
+  //TODO this is cool in 19edo but I should also do the math so you can have each jump in the grid be an integer ratio in frequencies
 }
 
 
@@ -210,9 +222,9 @@ function toggleMute(){
   mute = !mute;
   if(master){
       if (mute) {
-        master.gain.value = 0;
+        master.gain.exponentialRampToValueAtTime(EPSILON, audioContext.currentTime);
       } else {
-        master.gain.value = gainVal;
+        master.gain.exponentialRampToValueAtTime(gainVal, audioContext.currentTime + volumeAttack);
       }
   }
 }
@@ -262,15 +274,15 @@ function start(){
 
 
 
-    audioContext = new AudioContext(); 
+    audioContext = new AudioContext();
     master = audioContext.createGain();
     master.gain.value = gainVal;
 
 
 
-    // var filter = filter = audioContext.createBiquadFilter(); //filter, lowpass kinda makes the broader spectrum sawtooth waves hurt your ears less
-    // filter.type = 'bandpass'
-    // filter.frequency.setTargetAtTime(1200, 0, 0);
+    var filter = filter = audioContext.createBiquadFilter(); //filter, lowpass kinda makes the broader spectrum sawtooth waves hurt your ears less
+    filter.type = 'bandpass'
+    filter.frequency.setTargetAtTime(1200, 0, 0);
 
     var compressor = audioContext.createDynamicsCompressor(); //sets compressor node in a variable
     var analyser = audioContext.createAnalyser(); //Sets analyser node in a variable
@@ -284,35 +296,18 @@ function start(){
     //Add some notes
 
     for(var i = 0; i<maxNotes; i++){
-      var note = createNote(0, 2, audioContext)
-      // note.volume.connect(filter)
-      note.volume.connect(compressor)
+      var note = createNote(0, 3, audioContext)
+      note.volume.connect(filter)
+      // note.volume.connect(compressor)
            
       notes.push(note)
     }
 
 
-    // filter.connect(compressor);
+    filter.connect(compressor);
     compressor.connect(master);
     master.connect(analyser);
     analyser.connect(audioContext.destination); //This actually outputs the sound
-
-
-    //Divide by the frequency range in powers of to(octaves) scalar and also 12, for chromatic
-    // var denominator = octaveSpan*12;
-    // var scaleIndex = 0;
-    // var scale = [2.0,2.0,1.0,2.0,2.0,2.0,1.0]
-
-    // setInterval(function() {
-    //   if (mute) {
-    //     master.gain.value = 0;
-    //   } else {
-    //     master.gain.value = gainVal;
-    //   }
-    //   console.log(`scale index ${scaleIndex}`)
-    //   aNote.setPhase((aNote.phase + (scale[scaleIndex]/denominator))%1.0)
-    //   scaleIndex = (scaleIndex === (scale.length - 1)) ? 0 : scaleIndex + 1;
-    // }, intervalTime);
 
     setUpVisualizer(analyser)
   }
