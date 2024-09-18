@@ -29,11 +29,11 @@ button {
   display: none;
 }
 
-.btn-mute {
+.btn-hidden {
   display: none;
 }
 
-.btn-mute-visible {
+.btn-visible {
   display: block;
 }
 

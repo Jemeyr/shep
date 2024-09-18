@@ -120,10 +120,11 @@ function createNote(phase, oscAmt, context){
     var oscAmt= note.oscs.length
 
     for (i = 0; i< oscAmt; i++){
-      //TODO these offsets are janky somehow? In retrospect the gain for each one is the same unless it is being dampened to fit in range
+      //TODO the way we calculate these is kinda janky, In theory this should produce a compound note frequency which has energy across the spectrum we care about, so 
+      //TODO that the shepard tone effect can apply to it.
+      //TODO it's probably better to just make the oscillator approximately even across the frequency spectrum and filter out the spectrum
 
-
-      var frequency = toFrequency((newPhase + ((i === 0 ? 0 : Math.log(i+1)) / Math.log(2))/octaveSpan) %1.0 );
+      var frequency = toFrequency((newPhase + ((Math.log(i+1) / Math.log(2))/octaveSpan)) % 1.0 );
       this.oscs[i].frequency.value = frequency; //Apply new frequency to oscillator.
 
       //Rejanked, clip to our frequency range, in the first/last octave of the range scale linearly for now
@@ -159,6 +160,8 @@ function createNote(phase, oscAmt, context){
 
 
 
+
+
 //static things for the grid
 var grid;
 var gridX;
@@ -170,6 +173,37 @@ var gridContext;
 var maxNotes = 8;
 //Hold list of coords instead of counts to scale up to infinite squares in future
 var currentlySelected = [];
+
+//Scalars, the x/y are the scalars for the grids. These scalars are for a power of 2 multiple so x=6, d=19 is 6 19ths of an octave and x = log2(5/4), d=1 is a ratio of 5/4 of output frequency
+var gridScalars = {
+  mode: 'ratio',
+  edo: {
+    x: 6,
+    y: 11,
+    d: 19,
+  },
+  ratio: {
+    x: Math.log2(5/4),
+    y: Math.log2(3/2),
+    d: 1,
+  }
+}
+
+
+function toggleMode(){
+  gridScalars.mode = gridScalars.mode == 'ratio' ? 'edo' : 'ratio';
+
+  //clear
+  currentlySelected.forEach(box => squares[box.y][box.x].selected = false); 
+  currentlySelected = [];
+  updateNotes();
+  drawGrid();
+
+  document.getElementById("modeButton").innerHTML=`Mode: ${gridScalars.mode == 'edo' ? gridScalars[gridScalars.mode].d : ''}${gridScalars.mode}`;   
+
+}
+
+
 
 
 //static things for sound
@@ -189,8 +223,9 @@ function updateNotes(){
   currentlySelected.forEach(function(box, i) {
     var note = notes[i]
     note.setVolume(1);
-    //This is functionally the approxiamte "major 3rd" and "perfect fifth" in 19edo
-    note.setPhase(((box.y*6 + box.x*11)/(octaveSpan*19))%1.0)
+    var scalars = gridScalars[gridScalars.mode];
+    note.setPhase((box.x * scalars.x + box.y * scalars.y)/ (octaveSpan * scalars.d))
+
   })
   for(var i = currentlySelected.length; i<maxNotes; i++){
     notes[i].setVolume(0)
@@ -270,7 +305,9 @@ function load(){
 
 function start(){
     document.getElementById('startButton').remove()
-    document.getElementById('muteButton').className='btn-mute-visible'
+    document.getElementById('muteButton').className='btn-visible'
+    document.getElementById('modeButton').className='btn-visible'
+
 
 
 
