@@ -79,7 +79,7 @@ function toFrequency(phase){
 
 //Phase here is a number between 0-1, I guess it should map to some number of oscillators
 //oscs is the number of oscillators
-//context is the audio context 
+//context is the audio context
 function createNote(phase, oscAmt, context){
   note = {}
   note.oscs = []
@@ -111,7 +111,10 @@ function createNote(phase, oscAmt, context){
     note.gainAmounts[i] = gainAmount
   }
 
-  note.setVolume = function(newVolume){    
+  note.setVolume = function(newVolume){
+    if(this.volume.gain.value == newVolume){
+      return;
+    }
     this.volume.gain.exponentialRampToValueAtTime(newVolume < EPSILON ? EPSILON : newVolume, audioContext.currentTime + volumeAttack);
   }
 
@@ -120,7 +123,7 @@ function createNote(phase, oscAmt, context){
     var oscAmt= note.oscs.length
 
     for (i = 0; i< oscAmt; i++){
-      //TODO the way we calculate these is kinda janky, In theory this should produce a compound note frequency which has energy across the spectrum we care about, so 
+      //TODO the way we calculate these is kinda janky, In theory this should produce a compound note frequency which has energy across the spectrum we care about, so
       //TODO that the shepard tone effect can apply to it.
       //TODO it's probably better to just make the oscillator approximately even across the frequency spectrum and filter out the spectrum
 
@@ -140,7 +143,7 @@ function createNote(phase, oscAmt, context){
       
       } else if(frequency < highestFreq) {
         gainScalar = (highestFreq - frequency)/(highestFreq/2);
-      } 
+      }
 
       var gain = gainScalar * this.gainAmounts[i]
       this.gains[i].gain.exponentialRampToValueAtTime(gain < EPSILON  ? EPSILON : gain,volumeAttack);
@@ -151,7 +154,7 @@ function createNote(phase, oscAmt, context){
   note.setVolume(0)
   note.setPhase(phase)
 
-  for (i = 0; i < oscAmt; i++) {  
+  for (i = 0; i < oscAmt; i++) {
     note.oscs[i].start(0)
   }
 
@@ -239,7 +242,7 @@ var gridScalarMode = Object.keys(gridScalars)[0];
 
 function toggleMode(){
   var scalarTypes = Object.keys(gridScalars);
-  gridScalarMode = scalarTypes[(scalarTypes.indexOf(gridScalarMode) + 1) % scalarTypes.length] 
+  gridScalarMode = scalarTypes[(scalarTypes.indexOf(gridScalarMode) + 1) % scalarTypes.length]
 
   //clear everything
   squares = [...new Array(gridSize)].map((a,i) => [...new Array(gridSize)].map((a,i) => {return {selected: false};}));
@@ -247,7 +250,7 @@ function toggleMode(){
   updateNotes();
   drawGrid();
 
-  document.getElementById("modeButton").innerHTML=`Mode: ${gridScalarMode}`;   
+  document.getElementById("modeButton").innerHTML=`Mode: ${gridScalarMode}`;
   updateInfoBox()
 }
 
@@ -268,15 +271,19 @@ function updateNotes(){
   if(!notes.length){
     return;
   }
+  var active = []
   currentlySelected.forEach(function(box, i) {
-    var note = notes[i]
+    active.push(box.noteIndex);
+    var note = notes[box.noteIndex]
     note.setVolume(1);
     var scalars = gridScalars[gridScalarMode];
     note.setPhase((box.x * scalars.x + box.y * scalars.y)/ (octaveSpan * scalars.d))
 
   })
-  for(var i = currentlySelected.length; i<maxNotes; i++){
-    notes[i].setVolume(0)
+  for(var i = 0; i<maxNotes; i++){
+    if(!active.includes(i)){
+      notes[i].setVolume(0)
+    }
   }
 
   // 1/(octaveSpan*12) -> semitone in 12 tet
@@ -300,7 +307,6 @@ function drawGrid(){
 }
 
 function updateInfoBox(){
-  console.log(`updating info box with mode ${gridScalarMode}`)
   var element = document.getElementById('infoBox').innerHTML = gridScalars[gridScalarMode].info();
 
 }
@@ -332,9 +338,22 @@ function handleClick(event){
 
   if(currentlySelected.length < maxNotes || squares[y][x].selected){
     if(squares[y][x].selected){
-      currentlySelected.pop({x,y})
+      var removeIndex = currentlySelected.findIndex(item => item.x == x && item.y == y)
+      currentlySelected.splice(removeIndex, 1)
     } else {
-      currentlySelected.push({x,y})
+      //TODO Janky object pool for notes. Find any unused index and if not default to lenght
+      var noteIndex;
+      for(var i = 0; i < currentlySelected.length; i++){
+        if(currentlySelected.findIndex(item => item.noteIndex == i) < 0){
+          noteIndex = i;
+          break;
+        }
+      }
+      if(!noteIndex && noteIndex != 0){
+        noteIndex = currentlySelected.length
+      }
+      
+      currentlySelected.push({x,y,noteIndex})
     }
     squares[y][x].selected = !squares[y][x].selected;
   }
@@ -363,7 +382,7 @@ function start(){
     document.getElementById('muteButton').className='btn-visible'
     var modeButtonElement = document.getElementById('modeButton')
     modeButtonElement.className='btn-visible'
-    modeButtonElement.innerHTML=`Mode: ${gridScalarMode}`;   
+    modeButtonElement.innerHTML=`Mode: ${gridScalarMode}`;
     
     document.getElementById('infoBox').className='info-box-visible'
     updateInfoBox()
