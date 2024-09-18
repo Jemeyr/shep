@@ -370,7 +370,7 @@ function load(){
     grid = document.querySelector('.grid');
     gridX = grid.width;
     gridY = grid.height;
-    console.log('setting grid box size')
+    // console.log('setting grid box size')
     gridBoxX = gridX/gridSize;
     gridBoxY = gridY/gridSize;
     gridContext = grid.getContext('2d');
