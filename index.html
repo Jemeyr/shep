@@ -4,10 +4,12 @@
 	<script src="sounds.js"></script> 
 </head>
 <body onload=load()>
-	<button id="startButton" class="button btn-run" onClick=start()>START</button>
-	<button id="muteButton" class="button btn-hidden" onClick=toggleMute()>MUTE</button>
-	<button id="modeButton" class="button btn-hidden" onClick=toggleMode()>asd</button>
-
+	<div class="buttons">
+		<button id="startButton" class="button btn-run" onClick=start()>START</button>
+		<button id="muteButton" class="button btn-hidden" onClick=toggleMute()>Mute</button>
+		<button id="modeButton" class="button btn-hidden" onClick=toggleMode()>something broke</button>
+		<div id="infoBox" class="info-box info-box-hidden">something broke</div>
+	</div>
 	<canvas class="grid" height="600" width="1000" onClick=handleClick(event)></canvas>
 	<canvas class="visualizer" height="400" width="1000"></canvas>
 

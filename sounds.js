@@ -176,31 +176,79 @@ var currentlySelected = [];
 
 //Scalars, the x/y are the scalars for the grids. These scalars are for a power of 2 multiple so x=6, d=19 is 6 19ths of an octave and x = log2(5/4), d=1 is a ratio of 5/4 of output frequency
 var gridScalars = {
-  mode: 'ratio',
-  edo: {
+  edo19: {
     x: 6,
     y: 11,
     d: 19,
+    info: function(){
+      return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
+    }
+  },
+  'edo19 2': {
+    x: 5,
+    y: 9,
+    d: 19,
+    info: function(){
+      return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
+    }
+  },
+  'edo19 3': {
+    x: 3,
+    y: 7,
+    d: 19,
+    info: function(){
+      return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
+    }
   },
   ratio: {
     x: Math.log2(5/4),
     y: Math.log2(3/2),
     d: 1,
+    info: function(){
+      return `xScalar: ${Math.pow(2,this.x)}\nyScalar: ${Math.pow(2, this.y)}`
+    }
+  },
+  'ratio 2': {
+    x: Math.log2(5/4),
+    y: Math.log2(4/3),
+    d: 1,
+    info: function(){
+      return `xScalar: ${Math.pow(2,this.x)}\nyScalar: ${Math.pow(2, this.y)}`
+    }
+  },
+  'ratio 3': {
+    x: Math.log2(3/2),
+    y: Math.log2(4/3),
+    d: 1,
+    info: function(){
+      return `xScalar: ${Math.pow(2,this.x)}\nyScalar: ${Math.pow(2, this.y)}`
+    }
+  },
+  mix: {
+    x: Math.log2(81/64),
+    y: 1/3,
+    d: 1,
+    info: function(){
+      return `xScalar: JI major 3rd\nyScalar: ET major 3rd`
+    }
   }
 }
+var gridScalarMode = Object.keys(gridScalars)[0];
+
 
 
 function toggleMode(){
-  gridScalars.mode = gridScalars.mode == 'ratio' ? 'edo' : 'ratio';
+  var scalarTypes = Object.keys(gridScalars);
+  gridScalarMode = scalarTypes[(scalarTypes.indexOf(gridScalarMode) + 1) % scalarTypes.length] 
 
-  //clear
-  currentlySelected.forEach(box => squares[box.y][box.x].selected = false); 
+  //clear everything
+  squares = [...new Array(gridSize)].map((a,i) => [...new Array(gridSize)].map((a,i) => {return {selected: false};}));
   currentlySelected = [];
   updateNotes();
   drawGrid();
 
-  document.getElementById("modeButton").innerHTML=`Mode: ${gridScalars.mode == 'edo' ? gridScalars[gridScalars.mode].d : ''}${gridScalars.mode}`;   
-
+  document.getElementById("modeButton").innerHTML=`Mode: ${gridScalarMode}`;   
+  updateInfoBox()
 }
 
 
@@ -223,7 +271,7 @@ function updateNotes(){
   currentlySelected.forEach(function(box, i) {
     var note = notes[i]
     note.setVolume(1);
-    var scalars = gridScalars[gridScalars.mode];
+    var scalars = gridScalars[gridScalarMode];
     note.setPhase((box.x * scalars.x + box.y * scalars.y)/ (octaveSpan * scalars.d))
 
   })
@@ -251,6 +299,11 @@ function drawGrid(){
   });
 }
 
+function updateInfoBox(){
+  console.log(`updating info box with mode ${gridScalarMode}`)
+  var element = document.getElementById('infoBox').innerHTML = gridScalars[gridScalarMode].info();
+
+}
 
 
 function toggleMute(){
@@ -261,6 +314,8 @@ function toggleMute(){
       } else {
         master.gain.exponentialRampToValueAtTime(gainVal, audioContext.currentTime + volumeAttack);
       }
+      document.getElementById('muteButton').innerHTML=mute ? 'Unmute' : 'Mute'
+
   }
 }
 
@@ -306,8 +361,12 @@ function load(){
 function start(){
     document.getElementById('startButton').remove()
     document.getElementById('muteButton').className='btn-visible'
-    document.getElementById('modeButton').className='btn-visible'
-
+    var modeButtonElement = document.getElementById('modeButton')
+    modeButtonElement.className='btn-visible'
+    modeButtonElement.innerHTML=`Mode: ${gridScalarMode}`;   
+    
+    document.getElementById('infoBox').className='info-box-visible'
+    updateInfoBox()
 
 
 
