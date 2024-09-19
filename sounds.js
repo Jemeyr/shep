@@ -43,39 +43,39 @@ function setUpVisualizer(analyser){
 }
 
 
+//I've trashed the idea of the frequency span being octaves so this being based on A440 is just for fun
+var lowestFreq = 55;
+var highestFreq = 2*14080;
 
-//TODO ok so this is 6 powers of 2 apart, as in 7040/110 = 64 = 2^6
-//TODO therefore 1.0 in "phase" is functionally "6 octaves"
-var lowestFreq = 110;//A2
-var highestFreq = 3520;//A7
-var octaveSpan = 5; //wait this was 6 = A2 -> A8 now its not a valid multiple :/
+//This is basically the range in octaves
+var logRange = Math.log2(highestFreq/lowestFreq)
+
+//This is functionally in octaves how much of the range we want to fade out over
+var fadeSpan = logRange/3; //fade in, max, fade out in equal parts?
+var lowCutoff = lowestFreq * Math.pow(2,fadeSpan)
+var highCutoff = highestFreq / Math.pow(2,fadeSpan)
+
+
 //This appears to be needed because using Number.MIN_VALUE drops below some audiocontext epsilon for exponential scalars or something
 const EPSILON = 0.00000000001;
 
-//calculated shit
-//Ok basically we need to find out what frequency is logarithmically 1 Nth (For n oscillators) of the range from low to high
-var logRange = Math.log(highestFreq) / Math.log(lowestFreq)
+
 
 //seconds to change volume, sure
 var volumeAttack = 0.1;
 
 
-//TODO check these are not borked and reenable eventually
-function getFadeInCutoff(oscAmt){
-  return highestFreq;//lowestFreq + Math.pow(lowestFreq, logRange/oscAmt)
-}
-
-function getFadeOutCutoff(oscAmt){
-  return lowestFreq// + Math.pow(lowestFreq, (logRange * (oscAmt - 1))/oscAmt)
-}
-
-
 //TODO TODO this uses a bunch of jankily far away state. Also the math seems wrong
 //TODO this maps a "phase" to a frequency. Phases should basically map a 0-1 range to some number of octaves (2-4?) with a shepard tone wrapping such that 0 = 1
-function toFrequency(phase){
-  //Ok basically an octave is 2x frequency, so if we declare our ranges on frequencies as a range of 6, then that is the valid exponent our phase maps to?
-  return lowestFreq * Math.pow(2, octaveSpan * phase);
+function toFrequency(phase, offset){
+  //original function spans oddly?
+  //TODO this was using octavespan
+  var offsetPhase = (phase % (1/logRange) + (offset/logRange)) % 1.0
+  console.log(`Math ${JSON.stringify({phase, offset, offsetPhase})}`)
+  //This basically makes the phase loop over the span 
+  return lowestFreq * Math.pow(2, logRange * offsetPhase)
 }
+
 
 //Phase here is a number between 0-1, I guess it should map to some number of oscillators
 //oscs is the number of oscillators
@@ -96,7 +96,8 @@ function createNote(phase, oscAmt, context){
     osc.type = 'sine'
     
     var gain = context.createGain()
-    var gainAmount = Math.pow((1.0 - (i/(oscAmt + 1))),8);
+    //This is set later anyway
+    var gainAmount = 1.0;
 
     gain.gain.value = gainAmount
 
@@ -122,28 +123,30 @@ function createNote(phase, oscAmt, context){
     this.phase = newPhase
     var oscAmt= note.oscs.length
 
+    //Yolo frequencies to just octaves of the original?
+    //TODO this loop has to work with phase?
+    var frequency = toFrequency(newPhase, 0)
+
+
     for (i = 0; i< oscAmt; i++){
-      //TODO the way we calculate these is kinda janky, In theory this should produce a compound note frequency which has energy across the spectrum we care about, so
-      //TODO that the shepard tone effect can apply to it.
-      //TODO it's probably better to just make the oscillator approximately even across the frequency spectrum and filter out the spectrum
-
-      var frequency = toFrequency((newPhase + ((Math.log(i+1) / Math.log(2))/octaveSpan)) % 1.0 );
+      //Kinda janky to add offset to phase and then ignore it but meh
       this.oscs[i].frequency.value = frequency; //Apply new frequency to oscillator.
-
-      //Rejanked, clip to our frequency range, in the first/last octave of the range scale linearly for now
-      //Basically a bad bandpass filter?
+      frequency *= 2
 
       //Default to no volume
       var gainScalar = 0.0;
-      if(frequency < lowestFreq*2){
-        gainScalar = ((frequency-lowestFreq) / lowestFreq);
-        
-      } else if(frequency < highestFreq/2){
+      //This is basically how many octaves of the range on each end we want to fade out over
+
+      if(frequency < lowCutoff){
+        gainScalar = Math.log2(frequency/lowestFreq)/fadeSpan;
+      } else if(frequency < highCutoff){
         gainScalar = 1.0;
       
       } else if(frequency < highestFreq) {
-        gainScalar = (highestFreq - frequency)/(highestFreq/2);
+        gainScalar = 0-(Math.log2(frequency/highestFreq)/fadeSpan);
       }
+      console.log(`Set ${i} to ${frequency} at gain ${gainScalar}`)
+
 
       var gain = gainScalar * this.gainAmounts[i]
       this.gains[i].gain.exponentialRampToValueAtTime(gain < EPSILON  ? EPSILON : gain,volumeAttack);
@@ -179,7 +182,15 @@ var currentlySelected = [];
 
 //Scalars, the x/y are the scalars for the grids. These scalars are for a power of 2 multiple so x=6, d=19 is 6 19ths of an octave and x = log2(5/4), d=1 is a ratio of 5/4 of output frequency
 var gridScalars = {
-  edo19: {
+  '12tet': {
+    x: 1,
+    y: 2,
+    d: 12,
+    info: function(){
+      return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
+    }
+  },
+  '19edo A': {
     x: 6,
     y: 11,
     d: 19,
@@ -187,7 +198,7 @@ var gridScalars = {
       return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
     }
   },
-  'edo19 2': {
+  '19edo B': {
     x: 5,
     y: 9,
     d: 19,
@@ -195,7 +206,7 @@ var gridScalars = {
       return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
     }
   },
-  'edo19 3': {
+  '19edo C': {
     x: 3,
     y: 7,
     d: 19,
@@ -203,7 +214,7 @@ var gridScalars = {
       return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
     }
   },
-  ratio: {
+  'ratio A': {
     x: Math.log2(5/4),
     y: Math.log2(3/2),
     d: 1,
@@ -211,7 +222,7 @@ var gridScalars = {
       return `xScalar: ${Math.pow(2,this.x)}\nyScalar: ${Math.pow(2, this.y)}`
     }
   },
-  'ratio 2': {
+  'ratio B': {
     x: Math.log2(5/4),
     y: Math.log2(4/3),
     d: 1,
@@ -219,7 +230,7 @@ var gridScalars = {
       return `xScalar: ${Math.pow(2,this.x)}\nyScalar: ${Math.pow(2, this.y)}`
     }
   },
-  'ratio 3': {
+  'ratio C': {
     x: Math.log2(3/2),
     y: Math.log2(4/3),
     d: 1,
@@ -227,14 +238,62 @@ var gridScalars = {
       return `xScalar: ${Math.pow(2,this.x)}\nyScalar: ${Math.pow(2, this.y)}`
     }
   },
-  mix: {
+  'thirds': {
     x: Math.log2(81/64),
     y: 1/3,
     d: 1,
     info: function(){
       return `xScalar: JI major 3rd\nyScalar: ET major 3rd`
     }
-  }
+  },
+  '5edo': {
+    x: 1,
+    y: 2,
+    d: 5,
+    info: function(){
+      return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
+    }
+  },
+  '7edo A': {
+    x: 1,
+    y: 2,
+    d: 7,
+    info: function(){
+      return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
+    }
+  },
+  '7edo B': {
+    x: 2,
+    y: 3,
+    d: 7,
+    info: function(){
+      return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
+    }
+  },
+  '7edo B': {
+    x: 2,
+    y: 3,
+    d: 7,
+    info: function(){
+      return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
+    }
+  },
+  '14edo': {
+    x: 1,
+    y: 2,
+    d: 14,
+    info: function(){
+      return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
+    }
+  },
+  'pi edo': {
+    x: 1,
+    y: 2,
+    d: 3.141592,
+    info: function(){
+      return `xScalar: ${this.x}\nyScalar: ${this.y}\nedo: ${this.d}`
+    }
+  },
 }
 var gridScalarMode = Object.keys(gridScalars)[0];
 
@@ -277,7 +336,7 @@ function updateNotes(){
     var note = notes[box.noteIndex]
     note.setVolume(1);
     var scalars = gridScalars[gridScalarMode];
-    note.setPhase((box.x * scalars.x + box.y * scalars.y)/ (octaveSpan * scalars.d))
+    note.setPhase((box.x * scalars.x + box.y * scalars.y)/ (logRange * scalars.d))
 
   })
   for(var i = 0; i<maxNotes; i++){
@@ -286,8 +345,6 @@ function updateNotes(){
     }
   }
 
-  // 1/(octaveSpan*12) -> semitone in 12 tet
-  //TODO this is cool in 19edo but I should also do the math so you can have each jump in the grid be an integer ratio in frequencies
 }
 
 
@@ -409,9 +466,9 @@ function start(){
 
 
     //Add some notes
-
+    console.log(`logrange ${logRange}`)
     for(var i = 0; i<maxNotes; i++){
-      var note = createNote(0, 3, audioContext)
+      var note = createNote(0, Math.floor(logRange), audioContext)
       note.volume.connect(filter)
       // note.volume.connect(compressor)
            
